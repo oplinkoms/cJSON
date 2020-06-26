@@ -4,12 +4,77 @@
 #include <string.h>
 #include <unistd.h>
 #include "../cJSON.h"
+#include "common.h"
 
 #define OPLK_PATH_MAX_LEN 512 
+#define JSON_MODULE_PATH_FILE "../../../openapi/mapping/module_path.json"
+#define JSON_NUMBER_TYPE_FILE "../../../openapi/mapping/number_type.json"
+static cJSON *module_path = NULL;
+static cJSON *number_type = NULL;
 
 //return true - success 
 static cJSON_bool set_sr_object(cJSON* item, char* xpath);
 static cJSON_bool set_sr_array(cJSON * item, char* xpath);
+
+static cJSON_bool set_sr_number(char *xpath, cJSON *item)
+{
+    char *data_type;
+    cJSON *current_item;
+    cJSON *leaf;
+
+    current_item = number_type->child;
+    while (current_item != NULL)
+    {
+        data_type = current_item->string;
+        //printf ("data_type: %s\n", data_type);
+
+        //go through array find the leaf node 
+        leaf = current_item->child;
+        while (leaf != NULL) {
+          //url path contains the module path
+            if (strstr(xpath, leaf->valuestring)) {
+               //printf ("leaf: %s data_type: %s\n", cJSON_Print(leaf), data_type);
+                goto set_val;
+            }
+            leaf = leaf->next;
+        }
+
+        current_item = current_item->next;
+    }
+    return false;
+
+set_val:
+    //TODO: timeout leaf has multiple types, need special handling
+    printf ("xpath: %s\n", xpath);
+    if (strcmp(data_type, "decimal64") == 0)  {
+        printf("val number: sr_val.data.decimal64_val = %f\n", item->valuedouble);
+    } else if (strcmp(data_type, "uint64") == 0)  {
+        printf("val number: sr_val.data.uint64_val = %d\n", item->valueint);
+    } 
+    else if (strcmp(data_type, "uint32") == 0) { 
+        printf("val number: sr_val.data.uint32_val = %d\n", item->valueint);
+    }
+    else if (strcmp(data_type, "uint16") == 0) {
+        printf("val number: sr_val.data.uint16_val = %d\n", item->valueint);
+    }
+    else if (strcmp(data_type, "uint8") == 0) {
+        printf("val number: sr_val.data.uint8_val = %d\n", item->valueint);
+    }
+    else if (strcmp(data_type, "int64") == 0) {
+        printf("val number: sr_val.data.int64_val = %d\n", item->valueint);
+    }
+    else if (strcmp(data_type, "int32") == 0) {
+        printf("val number: sr_val.data.int32_val = %d\n", item->valueint);
+    }
+    else if (strcmp(data_type, "int16") == 0) {
+        printf("val number: sr_val.data.int16_val = %d\n", item->valueint);
+    }
+    else if (strcmp(data_type, "int8") == 0) {
+        printf("val number: sr_val.data.int8_val = %d\n", item->valueint);
+    }
+	
+    return true;
+}
 
 static cJSON_bool set_sr_value(cJSON* item, char* xpath)
 {
@@ -28,11 +93,9 @@ static cJSON_bool set_sr_value(cJSON* item, char* xpath)
             printf("val true: sr_val.data.bool_val = %s\n", "true");
             break;
         case cJSON_Number:
-	    /*TODO:need to distinqush: 
+	    /*need to distinqush: 
 	      (u)int8_t;(u)int16_t;(u)int32_t;(u)int64_t;decimal64_t; */
-            printf ("xpath: %s\n", xpath);
-            printf("val number: sr_val.data.decimal64_val = %f\n", item->valuedouble);
-            printf("val number: sr_val.data.uint32_val = %d\n", item->valueint);
+	    set_sr_number(xpath, item);
             break;
         case cJSON_Raw:
             printf ("xpath: %s\n", xpath);
@@ -60,19 +123,16 @@ static cJSON_bool set_sr_array(cJSON * item, char* xpath)
     cJSON *current_element = item->child;
 
     //printf ("array: %s\n", cJSON_Print(item));
-    // *output_pointer = '['; 
 
     while (current_element != NULL)
     {
        /*add array key into xpath, assume the key is always firstattribute
         TODO: how to support multi-dimentional array? */
         if (!cJSON_IsObject(current_element)) {
-	//leaf list: use xpath as is.
-            printf ("leaf-list\n");
+          //leaf list: no key, use xpath as is.
             snprintf(acXpath, OPLK_PATH_MAX_LEN, "%s", xpath); 
 	}
         else {		   
-            printf ("list\n");
 	//list with key:  add xpath with [key=value] 
             snprintf(acXpath, OPLK_PATH_MAX_LEN, "%s[%s='%s']", xpath, current_element->child->string, current_element->child->valuestring); 
         }
@@ -84,7 +144,6 @@ static cJSON_bool set_sr_array(cJSON * item, char* xpath)
         }
         current_element = current_element->next;
     }
-//    *output_pointer++ = ']'; 
 
     return true;
 }
@@ -94,16 +153,10 @@ static cJSON_bool set_sr_object(cJSON * item, char* xpath)
     cJSON *current_item = item->child;
     char acXpath[OPLK_PATH_MAX_LEN];
 
-/*    *output_pointer++ = '{'; */
-
-    while (current_item)
+    while (current_item != NULL)
     {
-        /* print key */
-
 	/*append key to the xpath */
         snprintf(acXpath, OPLK_PATH_MAX_LEN, "%s/%s", xpath, current_item->string);
-        /* print value */
-
 	/*set value */
         if (!set_sr_value(current_item, acXpath))
         {
@@ -113,45 +166,85 @@ static cJSON_bool set_sr_object(cJSON * item, char* xpath)
         current_item = current_item->next;
     }
 
-    //  *output_pointer++ = '}';
-
     return true;
 }
+
+static cJSON_bool rest_json_init(void)
+{
+    char *json;
+
+    json = read_file(JSON_MODULE_PATH_FILE);
+    module_path = cJSON_Parse(json);
+    //cJSON_Print(module_path);
+    free(json);
+
+    json = read_file(JSON_NUMBER_TYPE_FILE);
+    number_type = cJSON_Parse(json);
+
+    free(json);
+    //cJSON_Print(number_type);
+    return true;
+}
+
+static cJSON_bool get_yang_module(char *url_path, char* module_name)
+{
+    char *module;
+    cJSON *current_item;
+    cJSON *path;
+ 
+    current_item = module_path->child;
+    while (current_item != NULL)
+    { 
+        module = current_item->string;
+	//printf ("module: %s\n", module);
+
+	//go through array find the url path
+	path = current_item->child;
+	while (path != NULL) {
+          //url path contains the module path
+       	//printf ("path: %s\n", cJSON_Print(path));
+	    if (strstr(url_path, path->valuestring)) {
+       	printf ("pathi: %s module: %s\n", cJSON_Print(path), module);
+                snprintf(module_name, OPLK_PATH_MAX_LEN, "%s", module);
+	        return true;
+	    }
+	    path = path->next;
+	}
+	
+        current_item = current_item->next;
+    }
+    return false;
+}
+
 
 int CJSON_CDECL main(int argc, char* argv[])
 {
     char *json;
     cJSON *cjson;
-    size_t length;
-    FILE *f;
     char acXpath[OPLK_PATH_MAX_LEN];
+    char acYangModule[OPLK_PATH_MAX_LEN];
 
-    /* print the version */
-    //printf("cJSON Version: %s\n", cJSON_Version());
-
-    if (argc < 2) {
-        printf("Missing input json file\n");
-	printf("Usage: ./oplk_set_sr <file>\n");
+    if (argc < 3) {
+	printf("Usage: ./oplk_set_sr <file> <url>\n");
 	exit (-1);
     }
 
-    f = fopen (argv[1], "rb");
+    rest_json_init();
 
-    if (f) {
-      fseek (f, 0, SEEK_END);
-      length = (size_t)ftell (f);
-      fseek (f, 0, SEEK_SET);
-      json = (char*) malloc (length);
-      if (json) {
-        fread (json, 1, length, f);
-      }
-      fclose (f);
-    }
-    
+    json = read_file(argv[1]);
     cjson = cJSON_Parse(json);
-    //TODO: find ynag schema  
-    snprintf(acXpath, OPLK_PATH_MAX_LEN, "%s", "ietf-system:");
+
+    //printf ("JSON data:\n%s\n", cJSON_Print(cjson));
+    //find yang schema from url path 
+    if (!get_yang_module (argv[2], acYangModule)) {
+        printf ("can not find yang module \n");
+	return  (-1);
+    }
+
+    snprintf(acXpath, OPLK_PATH_MAX_LEN, "%s:", acYangModule);
+    //snprintf(acXpath, OPLK_PATH_MAX_LEN, "%s", "ietf-system:");
     set_sr_value (cjson, acXpath);
-  //  printf ("JSON output:\n%s\n", cJSON_Print(cjson));
+
+    free (json);
     return 0;
 }
