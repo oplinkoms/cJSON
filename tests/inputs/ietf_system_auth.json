@@ -1,11 +1,4 @@
 {
-      "contact": "software.oms@molex.com",
-      "hostname": "NOPPORO",
-      "location": "WH.CHINA",
-      "clock": {
-         "timezone-utc-offset": 60
-      },
-      "authentication": {
          "user-authentication-order": [
             "local-users"
          ],
@@ -23,19 +16,4 @@
                "password": "$6$qKEUJGo7$GEhkVybheoqQMu.rK.x0p1VKynXGzycoBo6tqRQYK7FdoFtnpYalIEpFfFOfSdp8FWoKpjBDhAkccwTlA01e2."
             }
          ]
-      },
-      "radius": {
-         "options": {
-            "timeout": 5.2,
-            "attempts": 2
-         }
-      },
-      "tacacs": {
-         "options": {
-            "timeout": 10
-         }
-      },
-      "ntp": {
-         "enabled": false
-      }
 }
